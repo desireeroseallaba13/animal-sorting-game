@@ -1,0 +1,193 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Animal Sorting Challenge — Hand Gesture Game</title>
+<style>
+:root{--ink:#17365d;--teal:#087f8c;--gold:#ffc83d;--green:#45bd62}
+*{box-sizing:border-box}
+body{margin:0;font-family:Arial,Helvetica,sans-serif;background:linear-gradient(135deg,#dff7ff,#fff5d6);color:var(--ink);text-align:center}
+header{padding:16px 12px 8px}
+h1{margin:0;color:#087f8c;font-size:clamp(1.5rem,4vw,2.5rem);text-shadow:1px 2px #fff}
+.subtitle{margin:8px 0}
+.top{display:flex;justify-content:center;gap:14px;flex-wrap:wrap;font-weight:bold;font-size:1.05rem}
+.pill{background:white;border:2px solid #b5dce6;border-radius:16px;padding:9px 16px}
+.controls{display:flex;justify-content:center;gap:10px;flex-wrap:wrap;margin:12px}
+button{border:0;border-radius:12px;background:var(--teal);color:white;padding:11px 16px;font-weight:bold;font-size:1rem;cursor:pointer}
+button:disabled{opacity:.45}
+main{max-width:1200px;margin:auto;padding:8px 14px 28px}
+.camera-panel{display:flex;align-items:center;justify-content:center;gap:14px;flex-wrap:wrap;margin:12px auto}
+video{width:220px;max-width:85vw;border:4px solid white;border-radius:16px;transform:scaleX(-1);background:#1b2d3a;box-shadow:0 4px 12px #0002}
+.instructions{max-width:540px;text-align:left;background:#fff;border:2px solid #c7e5ec;border-radius:16px;padding:12px 18px;line-height:1.55}
+.instructions b{color:#087f8c}
+#status{font-weight:bold;color:#8a4b00;min-height:25px;margin:10px}
+.boards{display:grid;grid-template-columns:1fr 1fr;gap:16px;margin:16px 0}
+.zone{background:#fff;border:4px dashed #e8a629;border-radius:18px;min-height:150px;padding:12px;transition:.15s}
+.zone h2{margin:0 0 4px;font-size:clamp(1.05rem,3vw,1.5rem)}
+.zone p{margin:0 0 10px}
+.zone.vivi{border-color:#45bd62}
+.zone.hover{box-shadow:0 0 0 5px #ffc83d;transform:scale(1.01)}
+.sorted{display:flex;gap:8px;justify-content:center;flex-wrap:wrap;font-size:.95rem}
+.sorted span{background:#f4f8fb;border-radius:9px;padding:7px}
+.cards{display:grid;grid-template-columns:repeat(5,minmax(100px,1fr));gap:10px}
+.animal{background:#fff;border:3px solid #d6a66a;border-radius:14px;padding:10px 4px;color:#17365d;box-shadow:0 3px 0 #d6a66a;min-height:104px}
+.animal .emoji{display:block;font-size:2.2rem}
+.animal.selected{outline:5px solid #ff9f1c;border-color:#ff9f1c}
+.animal.done{opacity:.35;filter:grayscale(.5)}
+#cursor{position:fixed;z-index:10;pointer-events:none;width:28px;height:28px;border-radius:50%;border:4px solid #ff7a00;background:#ffcf4d88;display:none;transform:translate(-50%,-50%)}
+footer{background:#087fce;color:white;padding:14px;font-weight:bold}
+small{font-weight:normal}
+@media(max-width:700px){.boards{grid-template-columns:1fr}.cards{grid-template-columns:repeat(2,minmax(100px,1fr))}.instructions{font-size:.95rem}}
+</style>
+</head>
+<body>
+<header>
+<h1>🐣 ANIMAL SORTING CHALLENGE 🐄</h1>
+<p class="subtitle">Use your hand to sort the animals — no mouse needed!</p>
+<div class="top"><div class="pill">⭐ Score: <span id="score">0</span>/10</div><div class="pill">⏱️ Time: <span id="time">60</span>s</div><div class="pill">🖐️ Gesture: <span id="gesture">Waiting…</span></div></div>
+<div class="controls"><button id="start">📷 Start Camera</button><button id="restart">🔄 Restart Game</button></div>
+</header>
+<main>
+<div class="camera-panel">
+<video id="video" autoplay playsinline muted></video>
+<div class="instructions">
+<b>HOW TO PLAY</b><br>
+1. Click <b>Start Camera</b> and allow camera access.<br>
+2. Show ☝️ <b>one index finger</b> and move the orange cursor over an animal card.<br>
+3. Show 🖐️ <b>an open palm</b> to pick up that animal.<br>
+4. Point to a category, then make ✊ <b>a fist</b> to drop it.<br>
+5. Explain why the animal belongs there to earn the point!
+<br><small>Tip: Keep your hand visible, well-lit, and a little away from the camera.</small>
+</div>
+</div>
+<div id="status">Press “Start Camera” to begin.</div>
+<section class="boards">
+<div class="zone" id="oviparous"><h2>🥚 OVIPAROUS</h2><p>Animals that lay eggs</p><div class="sorted" id="oviparousList"></div></div>
+<div class="zone vivi" id="viviparous"><h2>🐾 VIVIPAROUS</h2><p>Animals that give birth to live young</p><div class="sorted" id="viviparousList"></div></div>
+</section>
+<section class="cards" id="cards"></section>
+</main>
+<footer>🖐️ Turn your hand into the controller! <br><small>Hand tracking uses MediaPipe in your browser. Camera permission is required.</small></footer>
+<div id="cursor"></div>
+<script type="module">
+import { FilesetResolver, GestureRecognizer } from "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.14";
+
+const animals=[
+{name:"Chicken",emoji:"🐔",type:"oviparous"},
+{name:"Turtle",emoji:"🐢",type:"oviparous"},
+{name:"Crocodile",emoji:"🐊",type:"oviparous"},
+{name:"Duck",emoji:"🦆",type:"oviparous"},
+{name:"Goat",emoji:"🐐",type:"viviparous"},
+{name:"Horse",emoji:"🐴",type:"viviparous"},
+{name:"Cow",emoji:"🐄",type:"viviparous"},
+{name:"Dog",emoji:"🐶",type:"viviparous"},
+{name:"Cat",emoji:"🐱",type:"viviparous"},
+{name:"Snake*",emoji:"🐍",type:"oviparous"}
+];
+const video=document.querySelector("#video"), statusEl=document.querySelector("#status"), gestureEl=document.querySelector("#gesture"), cursor=document.querySelector("#cursor");
+let recognizer=null, stream=null, running=false, score=0, time=60, timer=null, selected=null, lastGesture="", lastActionAt=0, lastVideoTime=-1, rafId=null;
+const cardEls=new Map();
+function buildCards(){
+ const root=document.querySelector("#cards");root.innerHTML="";cardEls.clear();
+ [...animals].sort(()=>Math.random()-.5).forEach(a=>{
+  const b=document.createElement("button");b.className="animal";b.dataset.name=a.name;
+  b.innerHTML=`<span class="emoji">${a.emoji}</span>${a.name}`;
+  b.addEventListener("click",()=>{if(!running)return;selectAnimal(a)});
+  root.appendChild(b);cardEls.set(a.name,b);
+ });
+}
+function selectAnimal(a){
+ if(cardEls.get(a.name)?.classList.contains("done"))return;
+ selected=a;document.querySelectorAll(".animal").forEach(x=>x.classList.toggle("selected",x.dataset.name===a.name));
+ statusEl.textContent=`Picked up ${a.name}. Point to a category and make a fist to drop it.`;
+}
+function dropAnimal(type){
+ if(!selected){statusEl.textContent="Point to an animal and show an open palm first.";return}
+ if(selected.type===type){
+  score++;document.querySelector("#score").textContent=score;
+  document.querySelector(type==="oviparous"?"#oviparousList":"#viviparousList").insertAdjacentHTML("beforeend",`<span>${selected.emoji} ${selected.name}</span>`);
+  cardEls.get(selected.name).classList.add("done");cardEls.get(selected.name).classList.remove("selected");
+  statusEl.textContent=`✅ Correct category for ${selected.name}! Please explain your answer.`;
+  selected=null;
+  if(score===animals.length)finish("🏆 Excellent! You sorted all the animals!");
+ }else{
+  statusEl.textContent=`❌ Not quite. Try again: ${selected.name} is not in that category.`;
+ }
+}
+function finish(message){running=false;clearInterval(timer);statusEl.textContent=message;}
+function resetGame(){
+ clearInterval(timer);score=0;time=60;selected=null;running=true;
+ document.querySelector("#score").textContent=score;document.querySelector("#time").textContent=time;
+ document.querySelector("#oviparousList").innerHTML="";document.querySelector("#viviparousList").innerHTML="";
+ buildCards();statusEl.textContent="Camera ready. Point at an animal, then show an open palm to select it.";
+ timer=setInterval(()=>{if(!running)return;time--;document.querySelector("#time").textContent=time;if(time<=0)finish(`⏰ Time's up! Final score: ${score}/${animals.length}.`);},1000);
+}
+function fingerUp(lm, tip, pip){return lm[tip].y < lm[pip].y}
+function classifyGesture(lm){
+ const index=fingerUp(lm,8,6), middle=fingerUp(lm,12,10), ring=fingerUp(lm,16,14), pinky=fingerUp(lm,20,18);
+ if(index&&!middle&&!ring&&!pinky)return "Pointing_Up";
+ if(index&&middle&&ring&&pinky)return "Open_Palm";
+ if(!index&&!middle&&!ring&&!pinky)return "Closed_Fist";
+ return "Other";
+}
+function getTarget(x,y){
+ const el=document.elementFromPoint(x,y);
+ if(!el)return null;
+ const card=el.closest(".animal");
+ if(card&&!card.classList.contains("done"))return {kind:"card",name:card.dataset.name};
+ const zone=el.closest(".zone");
+ if(zone)return {kind:"zone",type:zone.id};
+ return null;
+}
+function handleFrame(){
+ if(!running||!recognizer||video.readyState<2){rafId=requestAnimationFrame(handleFrame);return}
+ if(video.currentTime!==lastVideoTime){
+  const result=recognizer.recognizeForVideo(video,performance.now());lastVideoTime=video.currentTime;
+  const lm=result.landmarks?.[0];
+  if(lm){
+   const g=result.gestures?.[0]?.[0]?.categoryName || classifyGesture(lm);
+   gestureEl.textContent=g.replaceAll("_"," ");
+   const x=(1-lm[8].x)*window.innerWidth, y=lm[8].y*window.innerHeight;
+   cursor.style.display="block";cursor.style.left=x+"px";cursor.style.top=y+"px";
+   const target=getTarget(x,y);
+   document.querySelectorAll(".zone").forEach(z=>z.classList.toggle("hover",target?.kind==="zone"&&target.type===z.id));
+   const now=Date.now();
+   if(g!==lastGesture && now-lastActionAt>700){
+    if(g==="Open_Palm"&&target?.kind==="card"){selectAnimal(animals.find(a=>a.name===target.name));lastActionAt=now;}
+    else if(g==="Closed_Fist"&&target?.kind==="zone"){dropAnimal(target.type);lastActionAt=now;}
+   }
+   lastGesture=g;
+  }else{
+   gestureEl.textContent="Hand not detected";cursor.style.display="none";
+   document.querySelectorAll(".zone").forEach(z=>z.classList.remove("hover"));
+   lastGesture="";
+  }
+ }
+ rafId=requestAnimationFrame(handleFrame);
+}
+async function startCamera(){
+ try{
+  statusEl.textContent="Loading hand tracking…";
+  if(!recognizer){
+   const vision=await FilesetResolver.forVisionTasks("https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.14/wasm");
+   recognizer=await GestureRecognizer.createFromOptions(vision,{
+    baseOptions:{modelAssetPath:"https://storage.googleapis.com/mediapipe-models/gesture_recognizer/gesture_recognizer/float16/1/gesture_recognizer.task"},
+    runningMode:"VIDEO",numHands:1
+   });
+  }
+  stream=await navigator.mediaDevices.getUserMedia({video:{facingMode:"user",width:640,height:480},audio:false});
+  video.srcObject=stream;await video.play();
+  resetGame();cancelAnimationFrame(rafId);handleFrame();
+ }catch(e){
+  statusEl.textContent="Could not start camera. Use Chrome or Edge, allow camera permission, and open this page through HTTPS or localhost. Details: "+e.message;
+ }
+}
+document.querySelector("#start").addEventListener("click",startCamera);
+document.querySelector("#restart").addEventListener("click",()=>{if(stream){resetGame()}else{statusEl.textContent="Start the camera first.";}});
+
+// Build the cards before camera permission is requested.
+buildCards();
+</script>
+</body>
+</html>
